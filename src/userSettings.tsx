@@ -97,7 +97,7 @@ export class MintWelcomeCustomHTML extends React.Component {
 
 export const whitelistSettings: WhitelistSettings = {
   //If you want to use the whitelist feature enable it.
-  enabled: true,
+  enabled: false,
 
   startDate: date("1 Jan 2022 00:00:00 GMT"),
   endDate: date("5 Jan 2022 00:00:00 GMT"),
