@@ -1,114 +1,89 @@
-import "./App.css";
-import { useMemo } from "react";
-
-import Minter from "./Minter";
-
-import * as anchor from "@project-serum/anchor";
-import { clusterApiUrl } from "@solana/web3.js";
-import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
+import './App.css';
+import { useMemo } from 'react';
+import * as anchor from '@project-serum/anchor';
+import Home from './Home';
+import { DEFAULT_TIMEOUT } from './connection';
+import { clusterApiUrl } from '@solana/web3.js';
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import {
   getPhantomWallet,
+  getSlopeWallet,
   getSolflareWallet,
+  getSolletExtensionWallet,
   getSolletWallet,
-} from "@solana/wallet-adapter-wallets";
+} from '@solana/wallet-adapter-wallets';
 
 import {
   ConnectionProvider,
   WalletProvider,
-} from "@solana/wallet-adapter-react";
+} from '@solana/wallet-adapter-react';
+import { WalletDialogProvider } from '@solana/wallet-adapter-material-ui';
 
-import { WalletDialogProvider } from "@solana/wallet-adapter-material-ui";
-import { ThemeProvider, createTheme } from "@material-ui/core";
-
+import { createTheme, ThemeProvider } from '@material-ui/core';
 
 const theme = createTheme({
   palette: {
-    type: "dark",
+    type: 'dark',
   },
 });
 
-const candyMachineId = process.env.REACT_APP_CANDY_MACHINE_ID
-  ? new anchor.web3.PublicKey(process.env.REACT_APP_CANDY_MACHINE_ID)
-  : undefined;
+const getCandyMachineId = (): anchor.web3.PublicKey | undefined => {
+  try {
+    return new anchor.web3.PublicKey(process.env.REACT_APP_CANDY_MACHINE_ID!);
+  } catch (e) {
+    console.log('Failed to construct CandyMachineId', e);
+    return undefined;
+  }
+};
 
-const network = process.env.REACT_APP_SOLANA_NETWORK as WalletAdapterNetwork;
+let error: string | undefined = undefined;
 
-const rpcHost = process.env.REACT_APP_SOLANA_RPC_HOST!;
+if (process.env.REACT_APP_SOLANA_NETWORK === undefined) {
+  error =
+    "Your REACT_APP_SOLANA_NETWORK value in the .env file doesn't look right! The options are devnet and mainnet-beta!";
+} else if (process.env.REACT_APP_SOLANA_RPC_HOST === undefined) {
+  error =
+    "Your REACT_APP_SOLANA_RPC_HOST value in the .env file doesn't look right! Make sure you enter it in as a plain-text url (i.e., https://metaplex.devnet.rpcpool.com/)";
+}
+
+const candyMachineId = getCandyMachineId();
+const network = (process.env.REACT_APP_SOLANA_NETWORK ??
+  'devnet') as WalletAdapterNetwork;
+const rpcHost =
+  process.env.REACT_APP_SOLANA_RPC_HOST ?? anchor.web3.clusterApiUrl('devnet');
 const connection = new anchor.web3.Connection(rpcHost);
-
-const startDateSeed = parseInt(process.env.REACT_APP_CANDY_START_DATE!, 10);
-
-const txTimeout = 30000; // milliseconds (confirm this works for your project)
 
 const App = () => {
   const endpoint = useMemo(() => clusterApiUrl(network), []);
 
   const wallets = useMemo(
-    () => [getPhantomWallet(), getSolflareWallet(), getSolletWallet()],
-    []
+    () => [
+      getPhantomWallet(),
+      getSolflareWallet(),
+      getSlopeWallet(),
+      getSolletWallet({ network }),
+      getSolletExtensionWallet({ network }),
+    ],
+    [],
   );
 
-  function toggleMenu() {
-    const menu = document.getElementById("mobileNavContainer")!;
-    menu.classList.toggle("open-menu");
-    console.log("pressed");
-  }
-
   return (
-    <div>
-      <div id="mobileNavContainer" className="mobile-nav">
-        <div className="mobile-nav-close-button" >
-          <img src="/icons/close.svg" alt="" onClick={toggleMenu}/>
-        </div>
-        <ul>
-          <li>
-            <img className="mobile-nav-logo" src="/img/logo.png" alt="" />
-          </li>
-          <li>
-            <div className="social-icons">
-              <img className="nav-social" src="/icons/twitter.svg" alt="" />
-              <img className="nav-social" src="/icons/discord.svg" alt="" />
-            </div>
-          </li>
-        </ul>
-      </div>
-      <div className="mobile-menu-button" onClick={toggleMenu}>
-        <img src="/icons/menu.svg" alt="" />
-      </div>
-      <nav>
-        <div className="nav-container">
-          <img className="nav-logo" src="/img/logo.png" alt="" />
-          <div className="social-icons hide-800">
-            <img className="nav-social" src="/icons/twitter.svg" alt="" />
-            <img className="nav-social" src="/icons/discord.svg" alt="" />
-          </div>
-        </div>
-      </nav>
-      <div className="content-wrapper">
-          <header className="card" id="link1">
-            <div>
-              <ThemeProvider theme={theme}>
-                <ConnectionProvider endpoint={endpoint}>
-                  <WalletProvider wallets={wallets} autoConnect>
-                    <WalletDialogProvider>
-
-                        <Minter
-                          candyMachineId={candyMachineId}
-                          connection={connection}
-                          startDate={startDateSeed}
-                          txTimeout={txTimeout}
-                          rpcHost={rpcHost}
-                        />
-
-                    </WalletDialogProvider>
-                  </WalletProvider>
-                </ConnectionProvider>
-              </ThemeProvider>
-            </div>
-          </header>
-
-      </div>
-    </div>
+    <ThemeProvider theme={theme}>
+      <ConnectionProvider endpoint={endpoint}>
+        <WalletProvider wallets={wallets} autoConnect>
+          <WalletDialogProvider>
+            <Home
+              candyMachineId={candyMachineId}
+              connection={connection}
+              txTimeout={DEFAULT_TIMEOUT}
+              rpcHost={rpcHost}
+              network={network}
+              error={error}
+            />
+          </WalletDialogProvider>
+        </WalletProvider>
+      </ConnectionProvider>
+    </ThemeProvider>
   );
 };
 

@@ -1,114 +1,153 @@
 import styled from 'styled-components';
 import Button from '@material-ui/core/Button';
 import { CandyMachineAccount } from './candy-machine';
-
 import { CircularProgress } from '@material-ui/core';
 import { GatewayStatus, useGateway } from '@civic/solana-gateway-react';
-import { useEffect, useState } from 'react';
-import { whitelistSettings, publicSaleSettings, mintPanic } from './userSettings';
-import { toDate }  from './utils'
+import { useEffect, useState, useRef } from 'react';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import {
+  findGatewayToken,
+  getGatewayTokenAddressForOwnerAndGatekeeperNetwork,
+  onGatewayTokenChange,
+  removeAccountChangeListener,
+} from '@identity.com/solana-gateway-ts';
 
-
-export const MintingButton = styled(Button)`
+export const CTAButton = styled(Button)`
   width: 100%;
   height: 60px;
-  background: linear-gradient(90deg, hsla(0, 0%, 24%, 1) 0%, hsla(0, 0%, 20%, 1) 100%);
-  background: -moz-linear-gradient(90deg, hsla(0, 0%, 24%, 1) 0%, hsla(0, 0%, 20%, 1) 100%);
-  background: -webkit-linear-gradient(90deg, hsla(0, 0%, 24%, 1) 0%, hsla(0, 0%, 20%, 1) 100%);
+  margin-top: 10px;
+  margin-bottom: 5px;
+  background: linear-gradient(180deg, #604ae5 0%, #813eee 100%);
   color: white;
   font-size: 16px;
   font-weight: bold;
-`;
+`; // add your own styles here
 
 export const MintButton = ({
   onMint,
   candyMachine,
-
   isMinting,
-
-
+  setIsMinting,
+  isActive,
 }: {
   onMint: () => Promise<void>;
-  candyMachine: CandyMachineAccount | undefined;
-
+  candyMachine?: CandyMachineAccount;
   isMinting: boolean;
-
+  setIsMinting: (val: boolean) => void;
+  isActive: boolean;
 }) => {
+  const wallet = useWallet();
+  const connection = useConnection();
+  const [verified, setVerified] = useState(false);
   const { requestGatewayToken, gatewayStatus } = useGateway();
+  const [webSocketSubscriptionId, setWebSocketSubscriptionId] = useState(-1);
   const [clicked, setClicked] = useState(false);
-  const whitelistStartDate = toDate(whitelistSettings.startDate)?.getTime();
-  const whitelistEndDate = toDate(whitelistSettings.endDate)?.getTime();
-  const publicMintStart = toDate(publicSaleSettings.startDate)?.getTime();
-  const publicMintEnd = toDate(publicSaleSettings.endDate)?.getTime();
 
-  function whiteListSaleCheck() {
-    if (whitelistSettings.enabled && (whitelistStartDate && whitelistEndDate ) && Date.now() > whitelistStartDate && Date.now() < whitelistEndDate) {
-
-      return true
-    } else {
-
-      return false
-    }
-  }
-
-  let WhitelistMintActive = whiteListSaleCheck()
-  console.log('is Whitelist Sale Active? ' + whiteListSaleCheck())
-
-  function publicSaleCheck() {
-
-    if (publicMintStart && publicMintEnd){
-      if(Date.now() > publicMintStart && Date.now() < publicMintEnd){
-        return true
-      } else {
-        return false
-      }
-    }
-    else if (publicMintStart) {
-      if (Date.now() > publicMintStart){
-        return true
-      } else {
-        return false
-      }
-
+  const getMintButtonContent = () => {
+    if (candyMachine?.state.isSoldOut) {
+      return 'SOLD OUT';
+    } else if (isMinting) {
+      return <CircularProgress />;
+    } else if (
+      candyMachine?.state.isPresale ||
+      candyMachine?.state.isWhitelistOnly
+    ) {
+      return 'WHITELIST MINT';
     }
 
-
-  }
-
-  let PublicMintActive = publicSaleCheck()
-
-  console.log('is public sale live? '+ publicSaleCheck())
-
-  console.log(candyMachine?.state.isSoldOut, isMinting, (WhitelistMintActive || PublicMintActive) ,!candyMachine?.state.isActive)
+    return 'MINT';
+  };
 
   useEffect(() => {
-    if (gatewayStatus === GatewayStatus.ACTIVE && clicked) {
-      console.log('Minting');
-      onMint();
+    const mint = async () => {
+      await removeAccountChangeListener(
+        connection.connection,
+        webSocketSubscriptionId,
+      );
+      await onMint();
+
       setClicked(false);
+      setVerified(false);
+    };
+    if (verified && clicked) {
+      mint();
     }
-  }, [gatewayStatus, clicked, setClicked, onMint]);
+  }, [
+    verified,
+    clicked,
+    connection.connection,
+    onMint,
+    webSocketSubscriptionId,
+  ]);
+
+  const previousGatewayStatus = usePrevious(gatewayStatus);
+  useEffect(() => {
+    const fromStates = [
+      GatewayStatus.NOT_REQUESTED,
+      GatewayStatus.REFRESH_TOKEN_REQUIRED,
+    ];
+    const invalidToStates = [...fromStates, GatewayStatus.UNKNOWN];
+    if (
+      fromStates.find(state => previousGatewayStatus === state) &&
+      !invalidToStates.find(state => gatewayStatus === state)
+    ) {
+      setIsMinting(true);
+    }
+    console.log('change: ', gatewayStatus);
+  }, [setIsMinting, previousGatewayStatus, gatewayStatus]);
+
   return (
-    <MintingButton
-      disabled={
-        candyMachine?.state.isSoldOut ||
-        isMinting ||
-        mintPanic.enabled ||
-        !(WhitelistMintActive || PublicMintActive)
-
-
-      }
+    <CTAButton
+      disabled={isMinting || !isActive}
       onClick={async () => {
-        setClicked(true);
         if (candyMachine?.state.isActive && candyMachine?.state.gatekeeper) {
-          console.log('gatekeeper active')
-          if (gatewayStatus === GatewayStatus.ACTIVE) {
-            console.log(gatewayStatus + GatewayStatus.ACTIVE)
+          const network =
+            candyMachine.state.gatekeeper.gatekeeperNetwork.toBase58();
+          if (network === 'ignREusXmGrscGNUesoU9mxfds9AiYTezUKex2PsZV6') {
+            if (gatewayStatus === GatewayStatus.ACTIVE) {
+              await onMint();
+            } else {
+              // setIsMinting(true);
+              await requestGatewayToken();
+              console.log('after: ', gatewayStatus);
+            }
+          } else if (
+            network === 'ttib7tuX8PTWPqFsmUFQTj78MbRhUmqxidJRDv4hRRE' ||
+            network === 'tibePmPaoTgrs929rWpu755EXaxC7M3SthVCf6GzjZt'
+          ) {
             setClicked(true);
+            const gatewayToken = await findGatewayToken(
+              connection.connection,
+              wallet.publicKey!,
+              candyMachine.state.gatekeeper.gatekeeperNetwork,
+            );
+
+            if (gatewayToken?.isValid()) {
+              await onMint();
+            } else {
+              window.open(
+                `https://verify.encore.fans/?gkNetwork=${network}`,
+                '_blank',
+              );
+
+              const gatewayTokenAddress =
+                await getGatewayTokenAddressForOwnerAndGatekeeperNetwork(
+                  wallet.publicKey!,
+                  candyMachine.state.gatekeeper.gatekeeperNetwork,
+                );
+
+              setWebSocketSubscriptionId(
+                onGatewayTokenChange(
+                  connection.connection,
+                  gatewayTokenAddress,
+                  () => setVerified(true),
+                  'confirmed',
+                ),
+              );
+            }
           } else {
-            console.log('requeting token')
-             let token = await requestGatewayToken();
-            console.log(token);
+            setClicked(false);
+            throw new Error(`Unknown Gatekeeper Network: ${network}`);
           }
         } else {
           await onMint();
@@ -117,20 +156,15 @@ export const MintButton = ({
       }}
       variant="contained"
     >
-      <div className='mint-button-text'>
-      {candyMachine?.state.isSoldOut ? (
-        'SOLD OUT'
-      ) : isMinting ? (
-        <CircularProgress />
-
-      ) : mintPanic.enabled ? (
-
-        'Mint Paused'
-
-      ) :  (
-        'MINT'
-      )}
-      </div>
-    </MintingButton>
+      {getMintButtonContent()}
+    </CTAButton>
   );
 };
+
+function usePrevious<T>(value: T): T | undefined {
+  const ref = useRef<T>();
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
+  return ref.current;
+}

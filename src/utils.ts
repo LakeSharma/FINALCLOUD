@@ -11,11 +11,8 @@ export interface AlertState {
   open: boolean;
   message: string;
   severity: 'success' | 'info' | 'warning' | 'error' | undefined;
+  hideDuration?: number | null;
 }
-
-export const FAIR_LAUNCH_PROGRAM_ID = new anchor.web3.PublicKey(
-  'faircnAB9k59Y4TXmLabBULeuTLgV7TkGMGNkjnA15j',
-);
 
 export const toDate = (value?: anchor.BN) => {
   if (!value) {
@@ -54,19 +51,6 @@ export const SPL_ASSOCIATED_TOKEN_ACCOUNT_PROGRAM_ID =
 export const CIVIC = new anchor.web3.PublicKey(
   'gatem74V238djXdzWnJf94Wo1DcnuGkfijbf3AuBhfs',
 );
-export const getFairLaunchTicketSeqLookup = async (
-  tokenMint: anchor.web3.PublicKey,
-  seq: anchor.BN,
-): Promise<[anchor.web3.PublicKey, number]> => {
-  return await anchor.web3.PublicKey.findProgramAddress(
-    [
-      Buffer.from('fair_launch'),
-      tokenMint.toBuffer(),
-      seq.toArrayLike(Buffer, 'le', 8),
-    ],
-    FAIR_LAUNCH_PROGRAM_ID,
-  );
-};
 
 export const getAtaForMint = async (
   mint: anchor.web3.PublicKey,
@@ -99,16 +83,6 @@ export const getNetworkToken = async (
       gatekeeperNetwork.toBuffer(),
     ],
     CIVIC,
-  );
-};
-
-export const getFairLaunchTicket = async (
-  tokenMint: anchor.web3.PublicKey,
-  buyer: anchor.web3.PublicKey,
-): Promise<[anchor.web3.PublicKey, number]> => {
-  return await anchor.web3.PublicKey.findProgramAddress(
-    [Buffer.from('fair_launch'), tokenMint.toBuffer(), buyer.toBuffer()],
-    FAIR_LAUNCH_PROGRAM_ID,
   );
 };
 
@@ -161,9 +135,3 @@ export function createAssociatedTokenAccountInstruction(
     data: Buffer.from([]),
   });
 }
-
-export function formatSol(sol:number){
-    var formated = sol / 1000000000
-    return formated
-}
-
